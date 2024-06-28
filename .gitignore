@@ -25,6 +25,10 @@ share/python-wheels/
 *.egg
 *.DS_Store
 
+# Scratch notebooks
+.ipynb_checkpoints
+scratch.ipynb
+
 # Data
 *.csv
 *.db
