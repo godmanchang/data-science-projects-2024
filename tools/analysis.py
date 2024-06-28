@@ -3,32 +3,32 @@
 # This file contains functions for exploratory data analysis (EDA), data visualization, and statistical analysis.
 
 # Packages & Libraries
-import os
-from math import pi
-import warnings
+import os;
+from math import pi;
+import warnings;
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import squarify
+import numpy as np;
+import pandas as pd;
+import matplotlib.pyplot as plt;
+import seaborn as sns;
+import squarify;
 
-import scipy.stats as stats
-from scipy.stats import chi2_contingency, f_oneway
+import scipy.stats as stats;
+from scipy.stats import chi2_contingency, f_oneway;
 
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
+import statsmodels.api as sm;
+from statsmodels.formula.api import ols;
+from statsmodels.stats.multicomp import pairwise_tukeyhsd;
 
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import brier_score_loss;
 
-from IPython.display import display, HTML
-from pandas.plotting import register_matplotlib_converters
+from IPython.display import display, HTML;
+from pandas.plotting import register_matplotlib_converters;
 
-import holoviews as hv
-import itertools
+import holoviews as hv;
+import itertools;
 
-hv.extension('bokeh')
+hv.extension('bokeh');
 
 # Register matplotlib converters and suppress warnings
 register_matplotlib_converters()
@@ -99,7 +99,7 @@ def single_variable_EDA(df: pd.DataFrame, column: str=None, analysis_type: str=N
         
         if output_dir:
             plt.savefig(os.path.join(output_dir, f"{column}_categorical.png"))
-        plt.show()
+        plt.show();
         
         # Display value counts and percentages as HTML tables
         value_counts = df[column].value_counts().to_frame().reset_index()
@@ -170,7 +170,7 @@ def single_variable_EDA(df: pd.DataFrame, column: str=None, analysis_type: str=N
         
         if output_dir:
             plt.savefig(os.path.join(output_dir, f"{column}_numerical.png"))
-        plt.show()
+        plt.show();
         
     def identify_outliers(df, column):
         """Identify outliers in a numerical column using the IQR method."""
@@ -235,10 +235,10 @@ def single_variable_EDA(df: pd.DataFrame, column: str=None, analysis_type: str=N
         else:
             print("No outliers detected.")
   
-def pairwise_EDA(df: pd.DataFrame, column1: str, column2: str, analysis_type: str=None, bins1=None, bins2=None, output_dir: str=None, **kwargs):
+def pairwise_EDA(df: pd.DataFrame, column1: str, column2: str, analysis_type: str = None, bins1=None, bins2=None, output_dir: str = None, **kwargs):
     """
     Performs pairwise EDA on two columns in a pandas DataFrame.
-    
+
     Parameters:
     - df: pandas DataFrame
     - column1: str, first column name
@@ -249,15 +249,54 @@ def pairwise_EDA(df: pd.DataFrame, column1: str, column2: str, analysis_type: st
     - output_dir: str, directory to save output plots
     - kwargs: additional keyword arguments for customizing the plots
     """
-
-    def describe_correlation(corr_value):
-        """Function to describe the strength of a correlation value."""
-        if abs(corr_value) > 0.7:
-            return "High"
-        elif abs(corr_value) > 0.3:
-            return "Medium"
+    
+    def describe_correlation(correlation_value):
+        """Describes the strength and direction of the correlation."""
+        abs_value = abs(correlation_value)
+        if abs_value > 0.8:
+            strength = 'Strong'
+        elif abs_value > 0.5:
+            strength = 'Moderate'
+        elif abs_value > 0.3:
+            strength = 'Weak'
         else:
-            return "Low"
+            strength = 'Very weak or no'
+
+        if correlation_value > 0:
+            direction = 'positive'
+        elif correlation_value < 0:
+            direction = 'negative'
+        else:
+            direction = 'no'
+
+        return f'{strength} {direction} correlation'
+
+    def encode_binary(column):
+        """Encodes binary categorical column to 0 and 1."""
+        unique_values = column.unique()
+        if len(unique_values) == 2:
+            mapping = {unique_values[0]: 0, unique_values[1]: 1}
+            return column.map(mapping)
+        else:
+            raise ValueError("Column is not binary and cannot be encoded for point biserial correlation.")
+
+    def correlation_ratio(categories, measurements):
+        """Calculates the correlation ratio (eta coefficient) for categorical to numerical association."""
+        fcat, _ = pd.factorize(categories)
+        cat_num = np.max(fcat) + 1
+        y_avg_array = np.zeros(cat_num)
+        n_array = np.zeros(cat_num)
+
+        for i in range(cat_num):
+            cat_measures = measurements[fcat == i]
+            n_array[i] = len(cat_measures)
+            y_avg_array[i] = np.average(cat_measures)
+        
+        y_total_avg = np.sum(np.multiply(y_avg_array, n_array)) / np.sum(n_array)
+        numerator = np.sum(np.multiply(n_array, np.power(np.subtract(y_avg_array, y_total_avg), 2)))
+        denominator = np.sum(np.power(np.subtract(measurements, y_total_avg), 2))
+        eta = np.sqrt(numerator / denominator)
+        return eta
 
     def calculate_correlations(df, column1, column2, analysis_type):
         """Function to calculate different types of correlations between two columns."""
@@ -271,27 +310,34 @@ def pairwise_EDA(df: pd.DataFrame, column1: str, column2: str, analysis_type: st
                 ('Spearman', spearman_corr, describe_correlation(spearman_corr), 'Monotonic relationship. Differs from Pearson in handling outliers and non-linearity.'),
                 ('Kendall', kendall_corr, describe_correlation(kendall_corr), 'Ordinal (rank) relationship. Differs from Spearman in handling ties.')
             ]
-        elif analysis_type in ["cat_to_cat", "cat_to_num", "num_to_cat"]:
-            # Cramér's V for categorical-categorical
-            if analysis_type == "cat_to_cat":
-                contingency_table = pd.crosstab(df[column1], df[column2])
-                chi2 = stats.chi2_contingency(contingency_table)[0]
-                n = df.shape[0]
-                r, k = contingency_table.shape
-                cramers_v = (chi2 / (n * (min(k, r) - 1)))**0.5
-                correlations = [
-                    ("Cramér's V", cramers_v, describe_correlation(cramers_v), 'Measures association between two categorical variables.')
-                ]
-            # Point Biserial for categorical-numerical
-            else:
-                point_biserial_corr = stats.pointbiserialr(df[column1].astype(int), df[column2])[0]
+        elif analysis_type == "cat_to_cat":
+            contingency_table = pd.crosstab(df[column1], df[column2])
+            chi2 = stats.chi2_contingency(contingency_table)[0]
+            n = df.shape[0]
+            r, k = contingency_table.shape
+            cramers_v = (chi2 / (n * (min(k, r) - 1)))**0.5
+            correlations = [
+                ("Cramér's V", cramers_v, describe_correlation(cramers_v), 'Measures association between two categorical variables.')
+            ]
+        elif analysis_type == "cat_to_num" or analysis_type == "num_to_cat":
+            if df[column1].nunique() == 2:
+                col1_encoded = encode_binary(df[column1])
+                col2 = df[column2].astype(float)
+                point_biserial_corr = stats.pointbiserialr(col1_encoded, col2)[0]
                 correlations = [
                     ('Point Biserial', point_biserial_corr, describe_correlation(point_biserial_corr), 'Measures correlation between a binary and a continuous variable.')
+                ]
+            else:
+                col1 = df[column1]
+                col2 = df[column2].astype(float)
+                eta = correlation_ratio(col1, col2)
+                correlations = [
+                    ('Correlation Ratio (Eta)', eta, describe_correlation(eta), 'Measures correlation between a categorical and a continuous variable.')
                 ]
         return correlations
 
     def display_correlation_table(correlations):
-        """Displays nicely formatted correlation table in HTML, specfically for Jupyter notebooks."""
+        """Displays nicely formatted correlation table in HTML, specifically for Jupyter notebooks."""
         correlation_table = pd.DataFrame(correlations, columns=['Correlation Measure', 'Correlation Value', 'Description', 'Explanation'])
         display(HTML(correlation_table.to_html(index=False)))
 
@@ -371,15 +417,17 @@ def pairwise_EDA(df: pd.DataFrame, column1: str, column2: str, analysis_type: st
         plt.title(f'Hexbin Plot of {column1} vs {column2}')
         plt.xlabel(column1)
         plt.ylabel(column2)
+        
         # Add a regression line if requested
         if kwargs.get('regression', False):
             plt.subplot(2, 2, 1)
             sns.regplot(x=column1, y=column2, data=df, scatter=False, **kwargs)
+        
         plt.tight_layout()
         if output_dir:
             plt.savefig(os.path.join(output_dir, f"{column1}_vs_{column2}_num_to_num.png"))
         plt.show()
-    
+
     # Validate inputs
     if df is None:
         raise ValueError("No DataFrame provided.")
@@ -499,7 +547,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
         corr_matrix = df[num_cols].corr()
         sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0)
         plt.title('Correlation Heatmap for Numerical Columns')
-        plt.show()
+        plt.show();
     
     # Association Heatmap for categorical columns
     if cat_cols:
@@ -514,7 +562,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
         plt.figure(figsize=(10, 8))
         sns.heatmap(cat_corr.astype(float), annot=True, cmap='coolwarm', center=0)
         plt.title('Association Heatmap for Categorical Columns (Cramér\'s V)')
-        plt.show()
+        plt.show();
     
     # Heatmap for correlations between numerical and categorical features
     if num_cols and cat_cols:
@@ -527,7 +575,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
         plt.figure(figsize=(10, 8))
         sns.heatmap(num_cat_corr.astype(float), annot=True, cmap='coolwarm', center=0)
         plt.title('Correlation Heatmap between Numerical and Categorical Features (Correlation Ratio)')
-        plt.show()
+        plt.show();
     
     # Analysis with respect to the target variable
     if target:
@@ -541,7 +589,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
                 plt.xlabel('Numerical Features')
                 plt.ylabel('Correlation Coefficient')
                 plt.xticks(rotation=45)
-                plt.show()
+                plt.show();
             
             # Association of numerical target with categorical features
             if cat_cols:
@@ -558,7 +606,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
                 plt.xlabel('Categorical Features')
                 plt.ylabel('P-Value')
                 plt.xticks(rotation=45)
-                plt.show()
+                plt.show();
         
         elif target_type == 'categorical':
             # Association of categorical target with numerical features
@@ -575,7 +623,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
                 plt.xlabel('Numerical Features')
                 plt.ylabel('P-Value')
                 plt.xticks(rotation=45)
-                plt.show()
+                plt.show();
         
         # Association of categorical target with categorical features
         if cat_cols:
@@ -593,7 +641,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
             plt.xlabel('Categorical Features')
             plt.ylabel('P-Value')
             plt.xticks(rotation=45)
-            plt.show()
+            plt.show();
 
         # Correlation of categorical target with numerical features using correlation ratio
         if num_cols:
@@ -608,7 +656,7 @@ def correlation_analysis(df: pd.DataFrame, target: str = None):
             plt.xlabel('Numerical Features')
             plt.ylabel('Correlation Ratio')
             plt.xticks(rotation=45)
-            plt.show()
+            plt.show();
 
                                                     
 def statistical_tests(df: pd.DataFrame, target: str, p_value_threshold: float = 0.05):
