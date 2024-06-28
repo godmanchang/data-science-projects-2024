@@ -26,6 +26,13 @@ share/python-wheels/
 
 # Data
 *.csv
+*.db
+*.sqlite3
+*.sql
+*.xlsx
+*.xls
+*.dbf
+*.mdb
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
