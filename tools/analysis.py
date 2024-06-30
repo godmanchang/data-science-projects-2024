@@ -130,7 +130,17 @@ def single_variable_EDA(df: pd.DataFrame, column: str=None, analysis_type: str=N
         """Calculate optimal number of bins using the Freedman-Diaconis rule."""
         data = data.dropna()
         q25, q75 = np.percentile(data, [25, 75])
+        
+        # Handle the case where q75 - q25 is zero
+        if q75 - q25 == 0:
+            return 1
+        
         bin_width = 2 * (q75 - q25) * len(data) ** (-1/3)
+        
+        # Handle the case where bin_width is zero
+        if bin_width == 0:
+            return 1
+
         return max(1, int((data.max() - data.min()) / bin_width))
 
     def plot_numerical(df, column, output_dir, bins, **kwargs):
